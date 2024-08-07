@@ -1,0 +1,99 @@
+# Spécification du pipeline CI/CD pour GitLab
+# Variables globales
+variables:
+  KUBE_NAMESPACE_DEV: "dev"
+  KUBE_NAMESPACE_PROD: "prod"
+  HELM_VERSION: "3.7.0"  # Version de Helm à utiliser
+  IMAGE_NAME: maysa56/projetweb
+  DOCKER_DRIVER: overlay2
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: Kubernetes-demo
+
+# Image Docker de base pour les étapes du pipeline
+image:
+  name: "docker:latest"
+  entrypoint: [""]
+
+# Utilisation de Docker-in-Docker
+services:
+  - docker:dind
+
+# Définition des étapes du pipeline
+stages:
+  - buildPush
+  - test
+  - deploy-dev
+  - deploy-prod
+
+before_script:
+  - docker info
+  - echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+# Définition des jobs
+
+# Job de construction de l'image Docker
+build_image:
+  stage: buildPush
+  tags: ["build"]
+  script:
+    - docker build -t maysa56/projetweb:latest .
+    - docker push maysa56/projetweb:latest
+  only:
+    - dev  # Déclencher uniquement pour la branche dev
+
+# Job de test
+test_app:
+  stage: test
+  tags: ["build"]
+  script:
+    - echo "test reussi"
+
+# Job de déploiement sur l'environnement de développement (dev)
+deploy_dev:
+  stage: deploy-dev
+  tags: ["build"]
+  image:
+    name: "bitnami/kubectl"
+    entrypoint: [""]
+  before_script:
+    - pip install awscli
+    - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+  script:
+    - kubectl apply -f deploy/namespace.yaml
+    - kubectl apply -f deploy/mariadb-pvc.yaml
+    - kubectl apply -f deploy/mariadb-deployment.yaml
+    - kubectl apply -f deploy/mariadb-service.yaml
+    - sed -i "s|DOCKER_IMAGE|$IMAGE_NAME:latest|g" deploy/wordpress-deployment.yaml
+    - kubectl apply -f deploy/wordpress-pvc.yaml
+    - kubectl apply -f deploy/wordpress-deployment.yaml
+    - kubectl apply -f deploy/wordpress-service.yaml
+  environment:
+    name: dev
+    url: http://projetweb.maysadevops.dns-dynamic.net  # Remplacez par l'URL de votre environnement dev
+  only:
+    - dev  # Déclencher uniquement pour la branche dev
+
+# Job de déploiement sur l'environnement de production (prod)
+deploy_prod:
+  stage: deploy-prod
+  tags: ["build"]
+  image:
+    name: "bitnami/kubectl"
+    entrypoint: [""]
+  before_script:
+    - pip install awscli
+    - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+  script:
+    - kubectl apply -f deploy/namespace.yaml
+    - kubectl apply -f deploy/mariadb-pvc.yaml
+    - kubectl apply -f deploy/mariadb-deployment.yaml
+    - kubectl apply -f deploy/mariadb-service.yaml
+    - sed -i "s|DOCKER_IMAGE|$IMAGE_NAME:latest|g" deploy/wordpress-deployment.yaml
+    - kubectl apply -f deploy/wordpress-pvc.yaml
+    - kubectl apply -f deploy/wordpress-deployment.yaml
+    - kubectl apply -f deploy/wordpress-service.yaml
+  environment:
+    name: prod
+    url: http://projetweb.maysadevops.dns-dynamic.net  # Remplacez par l'URL de votre environnement prod
+  only:
+    - main  # Déclencher uniquement pour la branche main
