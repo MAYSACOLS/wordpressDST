@@ -1,0 +1,6 @@
+# async http requests & fast dns resolving
+aiohttp==3.6.2
+aiodns==2.0.0
+
+uvicorn==0.11.5
+PyJWT==1.7.1
